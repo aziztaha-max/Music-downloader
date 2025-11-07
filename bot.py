@@ -1,40 +1,84 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import yt_dlp
 import os
+import yt_dlp
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = "8410121628:AAGS4966KWFYH6q2m2TM5ty2L9ZJgHwVrec"
 
-def start(update, context):
-    update.message.reply_text("👋 أهلاً! اكتب اسم أي أغنية وأنا هجيبها لك ✅")
-
-def download_music(update, context):
-    query = update.message.text
-    update.message.reply_text(f"🎧 جاري البحث عن: {query}")
+# تحميل صوت من يوتيوب بالرابط
+async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ اكتب لينك بعد الأمر /link")
+        return
+    
+    url = context.args[0]
+    await update.message.reply_text("⏳ جاري التحميل ...")
 
     ydl_opts = {
         "format": "bestaudio/best",
-        "noplaylist": True,
+        "outtmpl": "song.mp3",
         "quiet": True,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }],
-        "outtmpl": "%(title)s.%(ext)s"
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
     }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"ytsearch:{query}", download=True)
-        file_name = ydl.prepare_filename(info['entries'][0])
-        mp3_file = file_name.rsplit('.', 1)[0] + ".mp3"
+        await update.message.reply_audio(audio="song.mp3")
+        os.remove("song.mp3")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {e}")
 
-    update.message.reply_audio(audio=open(mp3_file, 'rb'))
-    os.remove(mp3_file)
+# بحث وتنزيل من الاسم
+async def song(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ اكتب اسم الأغنية بعد /song")
+        return
+    
+    query = " ".join(context.args)
+    await update.message.reply_text(f"🔍 جاري البحث عن:\n{query}")
 
-updater = Updater(TOKEN, use_context=True)
-dp = updater.dispatcher
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": "song.mp3",
+        "quiet": True,
+        "default_search": "ytsearch",
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([query])
 
-dp.add_handler(CommandHandler("start", start))
-dp.add_handler(MessageHandler(Filters.text & ~Filters.command, download_music))
+        await update.message.reply_audio(audio="song.mp3")
+        os.remove("song.mp3")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {e}")
 
-updater.start_polling()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎧 أهلا بيك!\n\n"
+        "استخدم:\n"
+        "/song اسم الأغنية 🎶\n"
+        "/link رابط اليوتيوب 🔗\n\n"
+        "وهجيبلك الأغنية MP3 ✅"
+    )
+
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("song", song))
+    app.add_handler(CommandHandler("link", link))
+    print("✅ Bot Running...")
+    app.run_polling()
